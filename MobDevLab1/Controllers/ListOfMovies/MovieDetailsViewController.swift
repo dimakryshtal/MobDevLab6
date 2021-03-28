@@ -29,11 +29,23 @@ class MovieDetailsViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        
         setImageAndLabels()
     }
     
     func setImageAndLabels() {
-        poster.image = Manager.shared.getImage(details!.poster as NSString)
+        let child = SpinnerViewController()
+        child.view.frame = view.frame
+        view.addSubview(child.view)
+        child.didMove(toParent: self)
+        NetworkManager.sharad.getImage(with: details!.poster) {[weak self] (image, err) in
+            child.willMove(toParent: nil)
+            child.view.removeFromSuperview()
+            child.removeFromParent()
+            if let image = image {
+                self?.poster.image = image
+            }
+        }
         movieTitle.text = "Title: " + details!.title
         year.text = "Year: " + details!.year
         genre.text = "Genre: " + details!.genre!

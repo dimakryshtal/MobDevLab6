@@ -10,12 +10,13 @@ import UIKit
 class PhotosViewController: UIViewController {
     @IBOutlet var collectionView: UICollectionView!
     
-    var arrayOfPictures:[UIImage] = []
+    var arrayOfPictures = [Photo]()
     
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
+        
+        
         if let layout = collectionView?.collectionViewLayout as? MyCollectionViewLayout {
             layout.delegate = self
         }
@@ -24,14 +25,27 @@ class PhotosViewController: UIViewController {
         collectionView.dataSource = self
         
         collectionView.register(UINib(nibName: "MyCollectionViewCell", bundle: nil), forCellWithReuseIdentifier: "MyCollectionViewCell")
-        
+        getPictures()
     }
    
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         collectionView.collectionViewLayout.invalidateLayout()
     }
-    
+ 
+    func getPictures() {
+        NetworkManager.sharad.getPhotos(with: "small+animals", count: 18) { [weak self](data, error) in
+            
+            if let data = data {
+                if let photos = Manager.shared.parseJSON(data: data, type: Photos.self) {
+                    self?.arrayOfPictures = photos.hits
+                    self?.collectionView.reloadData()
+                }
+                self?.collectionView.reloadData()
+            }
+            
+        }
+    }
 }
 
 extension PhotosViewController: UICollectionViewDelegate, UICollectionViewDataSource{
@@ -41,7 +55,7 @@ extension PhotosViewController: UICollectionViewDelegate, UICollectionViewDataSo
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "MyCollectionViewCell", for: indexPath) as! MyCollectionViewCell
-        cell.configure(image: arrayOfPictures[indexPath.item])
+        cell.configure(url: arrayOfPictures[indexPath.item].largeImageURL)
 
         
         return cell
@@ -74,7 +88,6 @@ extension PhotosViewController: UIImagePickerControllerDelegate, UINavigationCon
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
         picker.dismiss(animated: true, completion: nil)
         guard let newImage = info[.originalImage] as? UIImage else { return }
-        arrayOfPictures.append(newImage)
         collectionView.reloadData()
     }
         

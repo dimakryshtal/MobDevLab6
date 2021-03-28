@@ -11,12 +11,11 @@ class ListViewController: UIViewController {
     
     @IBOutlet var tableView: UITableView!
     @IBOutlet var searchBar: UISearchBar!
+    
+    var currMovie: Movie?
 
     var searchArr = [Movie]()
     var searching = false
-   
-    lazy var jsonMovies = Manager.shared.getText("MoviesList", type: Movies.self)
-    lazy var moviesArr:[Movie] = jsonMovies!.Search
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -30,26 +29,27 @@ class ListViewController: UIViewController {
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        tableView.reloadData()
+       
     }
+    
 
 }
 
 extension ListViewController: UITableViewDelegate, UITableViewDataSource {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if searching {
-            return searchArr.count
+        if(searchArr.count == 0) {
+            tableView.setEmptyView()
         } else {
-            return moviesArr.count
+            tableView.restore()
         }
+        
+        return searchArr.count
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         var movie: Movie?
         if searching {
             movie = searchArr[indexPath.row]
-        } else {
-            movie = moviesArr[indexPath.row]
         }
             
         let cell = tableView.dequeueReusableCell(withIdentifier: "TableCell") as! CustomTableViewCell
@@ -57,12 +57,15 @@ extension ListViewController: UITableViewDelegate, UITableViewDataSource {
  
         return cell
     }
-    
+
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        if(moviesArr[indexPath.row].imdbID.prefix(2) == "tt" && !searching) {
-            performSegue(withIdentifier: "showdetail", sender: self)
-        } else if (searching && searchArr[indexPath.row].imdbID.prefix(2) == "tt") {
-            performSegue(withIdentifier: "showdetail", sender: self)
+        if (searching && searchArr[indexPath.row].imdbID.prefix(2) == "tt") {
+            NetworkManager.sharad.getMovieDetails(with: searchArr[indexPath.row].imdbID) { (data, error) in
+                if let data = data {
+                    self.currMovie = Manager.shared.parseJSON(data: data, type: Movie.self)
+                }
+                self.performSegue(withIdentifier: "showdetail", sender: self)
+            }
         } else {
             self.tableView.deselectRow(at: indexPath, animated: true)
         }
@@ -74,7 +77,7 @@ extension ListViewController: UITableViewDelegate, UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         if (editingStyle == .delete) {
-            moviesArr.remove(at: indexPath.row)
+            searchArr.remove(at: indexPath.row)
             tableView.deleteRows(at: [indexPath], with: .none)
         }
     }
@@ -83,7 +86,8 @@ extension ListViewController {
     @IBAction func unwindToVC(segue: UIStoryboardSegue) {
         if let sourceVC = segue.source as? AddMovieViewController {
             if (sourceVC.movie!.title != "") {
-                moviesArr.append(sourceVC.movie!)
+                searchArr.append(sourceVC.movie!)
+                tableView.reloadData()
             }
         }
     }
@@ -92,17 +96,12 @@ extension ListViewController {
             if let indexPath = self.tableView.indexPathForSelectedRow {
 
                 let controller = segue.destination as! MovieDetailsViewController
-                var data: Movie?
-   
-                if searching {
-                    data = Manager.shared.getText(searchArr[indexPath.row].imdbID, type: Movie.self)
-                } else {
-                    data = Manager.shared.getText(moviesArr[indexPath.row].imdbID, type: Movie.self)
-                }
-                
-                controller.details = data
+                controller.details = currMovie
+                    
                 self.tableView.deselectRow(at: indexPath, animated: true)
             }
+
+            
         }
       
     }
@@ -111,14 +110,46 @@ extension ListViewController {
 
 extension ListViewController: UISearchBarDelegate {
     func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-        if (searchText == "") {
+        let child = SpinnerViewController()
+        child.view.frame = tableView.frame
+        if (searchText.count < 3) {
             searching = false
             searchArr = [Movie]()
-        } else {
-            searchArr = moviesArr.filter(){$0.title.lowercased().hasPrefix(searchText.lowercased())}
+            child.removeFromParent()
+            self.tableView.reloadData()
+        } else if(searchText.count >= 3){
+
+            view.addSubview(child.view)
+            child.didMove(toParent: self)
+            
+            NetworkManager.sharad.getMovies(with: searchText) {[weak self] (data, err) in
+                child.willMove(toParent: nil)
+                child.view.removeFromSuperview()
+                child.removeFromParent()
+                if let data = data{
+                    if let movies = Manager.shared.parseJSON(data: data, type: Movies.self) {
+                        self?.searchArr = movies.Search
+                    } else {
+                        self?.searchArr = []
+                    }
+                    self?.tableView.reloadData()
+                }
+            }
             searching = true
         }
-        self.tableView.reloadData()
+    }
+    func searchBar(_ searchBar: UISearchBar, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        
+        var allowed = CharacterSet(charactersIn: "A"..."Z")
+        allowed.insert(charactersIn: "a"..."z")
+        allowed.insert(charactersIn: "0"..."9")
+        
+        if let range = text.rangeOfCharacter(from: allowed.inverted) {
+            print(range)
+            return false
+        }
+        
+        return true
     }
     
 }
@@ -130,13 +161,13 @@ extension ListViewController {
     }
     
     @objc func keyboardWillShow(notification: NSNotification) {
-        if let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue {
+        if let keyboardSize = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue {
             tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: keyboardSize.height + tableView.rowHeight - self.tabBarController!.tabBar.frame.size.height, right: 0)
             tableView.scrollIndicatorInsets = tableView.contentInset
         }
     }
     @objc func keyboardWillHide(notification: NSNotification) {
-        tableView.contentInset = .zero
+        tableView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         tableView.scrollIndicatorInsets = tableView.contentInset
     }
     
@@ -149,3 +180,30 @@ extension ListViewController {
         view.endEditing(true)
     }
 }
+
+extension UITableView {
+    func setEmptyView () {
+        let emptyView = UIView(frame: CGRect(x: self.center.x, y: self.center.y, width: self.bounds.size.width, height: self.bounds.size.height))
+        let label = UILabel()
+        emptyView.addSubview(label)
+
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.centerYAnchor.constraint(equalTo: emptyView.centerYAnchor).isActive = true
+        label.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor).isActive = true
+        
+        label.text = "No items found"
+        label.textColor = .black
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        
+        self.backgroundView = emptyView
+        self.separatorStyle = .none
+        
+    }
+    
+    func restore() {
+        self.backgroundView = nil
+        self.separatorStyle = .none
+    }
+}
+

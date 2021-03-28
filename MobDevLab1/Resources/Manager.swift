@@ -12,6 +12,19 @@ final class Manager {
     static let shared = Manager()
 }
 extension Manager {
+    public func parseJSON<T>(data: Data, type: T.Type) -> T? where T : Decodable {
+        let text = String(decoding: data, as: UTF8.self)
+        let jsonData = text.data(using: .utf8)!
+        
+        do {
+            let json = try JSONDecoder().decode(type.self, from: jsonData)
+            return json
+        } catch {
+            print("Error: \(error)")
+            return nil
+        }
+    }
+    
     public func getText<T>(_ textName: String, type: T.Type) -> T? where T : Decodable{
         if let filePath = Bundle.main.path(forResource: textName, ofType: "txt") {
             do {

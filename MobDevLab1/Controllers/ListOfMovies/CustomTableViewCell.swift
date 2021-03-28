@@ -22,10 +22,15 @@ class CustomTableViewCell: UITableViewCell {
     ]
     
     func setImageAndLabel(movie: Movie) {
-        if(movie.poster != "") {
-            myImageView.image = Manager.shared.getImage(movie.poster as NSString)
-        } else {
+        myImageView.image = nil
+        if(movie.poster == "" || movie.poster == "N/A") {
             myImageView.image = nil
+        } else {
+            NetworkManager.sharad.getImage(with: movie.poster) {[weak self] (cover, error) in
+                if let cover = cover {
+                    self?.myImageView.image = cover
+                }
+            }
         }
         
         constr[0].priority = UILayoutPriority(999)
